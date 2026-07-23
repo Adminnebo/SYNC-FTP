@@ -51,13 +51,15 @@ En el repo: **Settings → Secrets and variables → Actions → New repository 
 | `FTP_PORT` | opcional | Default `21` |
 | `FTP_BASE_PATH` | opcional | Default `/` |
 
-**Google Drive** ([sync-drive-images.yml](.github/workflows/sync-drive-images.yml)) — reusa `SUPABASE_URL` y `SUPABASE_SERVICE_ROLE_KEY`, y además:
+**Google Drive** ([sync-drive-images.yml](.github/workflows/sync-drive-images.yml)) — usa su **propio proyecto de Supabase** (distinto al del FTP):
 
 | Secret | Requerido | Notas |
 |---|---|---|
 | `GOOGLE_API_KEY` | ✅ | API key de Google Cloud con la Drive API habilitada |
 | `DRIVE_FOLDER_ID` | ✅ | Id de la carpeta (el tramo final de la URL `/folders/<ID>`) |
-| `DRIVE_SUPABASE_BUCKET` | ✅ | Bucket propio para las imágenes de Drive |
+| `DRIVE_SUPABASE_URL` | ✅ | `https://xxxx.supabase.co` del proyecto de Drive |
+| `DRIVE_SUPABASE_SERVICE_ROLE_KEY` | ✅ | Service role key de ese proyecto |
+| `DRIVE_SUPABASE_BUCKET` | ✅ | Bucket destino (ej. `Lucas_fichas_tecnicas`) |
 
 > - El FTP tiene que ser accesible desde internet (los runners de GitHub corren en la nube).
 > - La carpeta de Drive tiene que ser **pública** ("cualquiera con el enlace"). Si se hace privada, hay que migrar a service account.
