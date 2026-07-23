@@ -1,0 +1,38 @@
+name: Sync FTP images to Supabase
+
+# Runs the stateless daily sync: connects to the FTP, lists what already
+# exists in the Supabase bucket, and uploads only the new images.
+#
+# Schedule is in UTC. 07:00 UTC ≈ 04:00 Argentina. Change the cron below to
+# adjust. You can also trigger it by hand from the Actions tab (Run workflow).
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Sync
+        env:
+          FTP_HOST: ${{ secrets.FTP_HOST }}
+          FTP_PORT: ${{ secrets.FTP_PORT }}
+          FTP_USER: ${{ secrets.FTP_USER }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_BASE_PATH: ${{ secrets.FTP_BASE_PATH }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
+        run: node migrate.js sync

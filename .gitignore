@@ -1,0 +1,14 @@
+node_modules/
+
+# Secrets — never commit
+.env
+.env.migration
+
+# Local state (not needed by the stateless sync)
+discovery.json
+migration.log.json
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
