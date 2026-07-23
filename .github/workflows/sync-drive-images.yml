@@ -14,7 +14,10 @@ on:
 jobs:
   sync-drive:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Higher cap for the first bulk load (~4 GB). Daily increments finish fast.
+    # The sync is stateless+idempotent, so if a run is cut off it just resumes
+    # the missing files on the next run.
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
 

@@ -20,8 +20,10 @@ for (const k of REQUIRED) {
 const API_KEY = env.GOOGLE_API_KEY
 const FOLDER_ID = env.DRIVE_FOLDER_ID
 const BUCKET = env.SUPABASE_BUCKET
-const IMG_EXT = /\.(jpe?g|png|webp|gif|bmp|tiff?|svg|avif|heic|heif)$/i
 const FOLDER_MIME = 'application/vnd.google-apps.folder'
+// Google-native files (Docs/Sheets/Slides…) can't be fetched with alt=media,
+// only exported. We skip them; everything else (PDF, images, zip…) downloads.
+const GOOGLE_NATIVE = /^application\/vnd\.google-apps\./
 const CONCURRENCY = 5
 
 const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
@@ -80,8 +82,8 @@ async function walkDrive(folderId, prefix, acc) {
     const rel = prefix ? `${prefix}/${it.name}` : it.name
     if (it.mimeType === FOLDER_MIME) {
       await walkDrive(it.id, rel, acc)
-    } else if (IMG_EXT.test(it.name) || (it.mimeType || '').startsWith('image/')) {
-      acc.push({ id: it.id, name: it.name, key: sanitizeKey(rel) })
+    } else if (!GOOGLE_NATIVE.test(it.mimeType || '')) {
+      acc.push({ id: it.id, name: it.name, mimeType: it.mimeType, key: sanitizeKey(rel) })
     }
   }
   return acc
@@ -120,22 +122,22 @@ async function uploadOne(file) {
   const buffer = await driveDownload(file.id)
   const { error } = await supabase.storage
     .from(BUCKET)
-    .upload(file.key, buffer, { contentType: mimeFor(file.name), upsert: true })
+    .upload(file.key, buffer, { contentType: file.mimeType || mimeFor(file.name), upsert: true })
   if (error) throw error
   return file.key
 }
 
 async function sync() {
   console.log(`[drive-sync] Listing Drive folder ${FOLDER_ID} ...`)
-  const images = await walkDrive(FOLDER_ID, '', [])
-  console.log(`[drive-sync] Drive images: ${images.length}`)
+  const files = await walkDrive(FOLDER_ID, '', [])
+  console.log(`[drive-sync] Drive files: ${files.length}`)
 
   console.log(`[drive-sync] Listing existing objects in bucket "${BUCKET}" ...`)
   const remote = await listRemoteKeys('', new Set())
   console.log(`[drive-sync] Already in bucket: ${remote.size}`)
 
-  const todo = images.filter(f => !remote.has(f.key))
-  console.log(`[drive-sync] New images to upload: ${todo.length}`)
+  const todo = files.filter(f => !remote.has(f.key))
+  console.log(`[drive-sync] New files to upload: ${todo.length}`)
   if (todo.length === 0) { console.log('[drive-sync] Nothing new. Done.'); return }
 
   let i = 0, done = 0, failed = 0
