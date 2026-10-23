@@ -1,0 +1,39 @@
+name: Sync SFTP to Supabase
+
+# Stateless daily sync from the Azure SFTP (jheacloudservice) to Supabase:
+# /imagenes -> Lucas_imagenes, /fichastecnicas -> Lucas_fichas_tecnicas.
+# Uploads what is missing from each bucket or whose size changed (replaced on
+# the SFTP). Schedule is in UTC. 07:00 UTC ≈ 04:00 Argentina. Change the cron
+# below to adjust. Also triggerable by hand from the Actions tab.
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync-sftp:
+    runs-on: ubuntu-latest
+    # Daily increments finish in minutes; the cap leaves room for a bulk load
+    # (several GB). The sync is stateless+idempotent, so a run that is cut off
+    # just resumes the missing files on the next run.
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Sync SFTP
+        env:
+          SFTP_HOST: ${{ secrets.SFTP_HOST }}
+          SFTP_PORT: ${{ secrets.SFTP_PORT }}
+          SFTP_USER: ${{ secrets.SFTP_USER }}
+          SFTP_PASSWORD: ${{ secrets.SFTP_PASSWORD }}
+          SFTP_SUPABASE_URL: ${{ secrets.SFTP_SUPABASE_URL }}
+          SFTP_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SFTP_SUPABASE_SERVICE_ROLE_KEY }}
+        run: node sftp-sync.js

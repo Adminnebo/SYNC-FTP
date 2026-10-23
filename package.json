@@ -2,17 +2,14 @@
   "name": "nebo-ftp-image-sync",
   "version": "1.0.0",
   "private": true,
-  "description": "Daily sync: FTP images -> Supabase Storage (uploads only new images)",
+  "description": "Daily sync to Supabase Storage: SFTP images and data sheets (uploads only what is new or replaced)",
   "scripts": {
-    "discover": "node migrate.js discover",
-    "test": "node migrate.js test",
-    "run": "node migrate.js run",
-    "sync": "node migrate.js sync",
-    "sync-drive": "node drive-sync.js"
+    "sync": "node sftp-sync.js",
+    "test": "node sftp-sync.js test"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",
-    "basic-ftp": "^5.0.5",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "ssh2-sftp-client": "^12.1.1"
   }
 }
