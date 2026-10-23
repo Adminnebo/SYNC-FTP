@@ -58,16 +58,26 @@ function sanitizeKey(p) {
     .replace(/[^\x20-\x7E]/g, '-')
 }
 
-async function sftpClient() {
-  const client = new SftpClient()
-  await client.connect({
-    host: env.SFTP_HOST,
-    port: parseInt(env.SFTP_PORT) || 22,
-    username: env.SFTP_USER,
-    password: env.SFTP_PASSWORD,
-    readyTimeout: 60_000,
-  })
-  return client
+async function sftpClient(attempts = 3) {
+  for (let n = 1; ; n++) {
+    const client = new SftpClient()
+    try {
+      await client.connect({
+        host: env.SFTP_HOST,
+        port: parseInt(env.SFTP_PORT) || 22,
+        username: env.SFTP_USER,
+        password: env.SFTP_PASSWORD,
+        readyTimeout: 60_000,
+        // Azure drops SFTP connections idle for ~2 min; keep them talking.
+        keepaliveInterval: 15_000,
+      })
+      return client
+    } catch (err) {
+      if (n >= attempts) throw err
+      console.warn(`[sftp-sync] connect failed (${err.code || err.message}), retrying ...`)
+      await new Promise(r => setTimeout(r, 3000 * n))
+    }
+  }
 }
 
 async function walkSftp(client, dir, prefix, out) {
@@ -101,9 +111,17 @@ async function listRemote(bucket, prefix, out) {
   return out
 }
 
-async function syncPair(scanClient, { dir, bucket }) {
+async function syncPair({ dir, bucket }) {
   const tag = `[sftp-sync ${dir}]`
-  const files = await walkSftp(scanClient, dir, '', [])
+  // A fresh connection per folder: one opened at start would sit idle while
+  // the previous folder uploads, and Azure closes it.
+  const scanClient = await sftpClient()
+  let files
+  try {
+    files = await walkSftp(scanClient, dir, '', [])
+  } finally {
+    await scanClient.end()
+  }
   console.log(`${tag} SFTP files: ${files.length}`)
 
   const remote = await listRemote(bucket, '', new Map())
@@ -117,12 +135,23 @@ async function syncPair(scanClient, { dir, bucket }) {
 
   let i = 0, done = 0, failed = 0
   const workers = Array.from({ length: CONCURRENCY }, async () => {
-    const client = await sftpClient()
+    let client = await sftpClient()
+    // If the connection dropped, reconnect and retry the file once.
+    async function download(file) {
+      try {
+        return await client.get(file.path)
+      } catch (err) {
+        console.warn(`${tag} retry ${file.path} on a new connection: ${err.message || err}`)
+        await client.end().catch(() => {})
+        client = await sftpClient()
+        return await client.get(file.path)
+      }
+    }
     try {
       while (i < todo.length) {
         const file = todo[i++]
         try {
-          const buffer = await client.get(file.path)
+          const buffer = await download(file)
           const { error } = await supabase.storage
             .from(bucket)
             .upload(file.key, buffer, { contentType: mimeFor(file.name), upsert: true })
@@ -135,7 +164,7 @@ async function syncPair(scanClient, { dir, bucket }) {
         }
       }
     } finally {
-      await client.end()
+      await client.end().catch(() => {})
     }
   })
   await Promise.all(workers)
@@ -145,13 +174,8 @@ async function syncPair(scanClient, { dir, bucket }) {
 
 async function sync() {
   console.log(`[sftp-sync] Connecting to ${env.SFTP_HOST} ...`)
-  const scanClient = await sftpClient()
   let failed = 0
-  try {
-    for (const pair of PAIRS) failed += (await syncPair(scanClient, pair)).failed
-  } finally {
-    await scanClient.end()
-  }
+  for (const pair of PAIRS) failed += (await syncPair(pair)).failed
   if (failed > 0) process.exit(1) // fail the CI run so you get notified
 }
 
